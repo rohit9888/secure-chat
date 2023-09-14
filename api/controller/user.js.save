@@ -67,9 +67,7 @@ exports.signup = async (req, res) => {
         const hashedPassword = await hashPassword(password);
 
         var otp = betweenRandomNumber(1000, 9999)
-        console.log("otp", otp)
         var UserData = await User.findOne({ email: req.body.email})
-        console.log("userdata", UserData)
         if (UserData != null) {
             if(UserData.verifiy == 0){
                 User.findOneAndUpdate({email: req.body.email},{$set:{otp:otp}},(err,updateOTP)=>{
@@ -88,7 +86,6 @@ exports.signup = async (req, res) => {
             var userName = first_name+last_name
             var result = await registerUser.registerUser(userName, orgName, password)
 
-            console.log("result", result.success)
             if(result.success == true){
                 const newUser = new User({
                     first_name: first_name,
@@ -105,7 +102,6 @@ exports.signup = async (req, res) => {
                 newUser.set({'otp':otp})
                 var savedata = await newUser.save()
                 sgMail.setApiKey('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');
-                console.log("emailemail",email)
                 const msg = {
                   to: email,
                   from: 'divyachourasiya.infograins@gmail.com',
@@ -118,7 +114,6 @@ exports.signup = async (req, res) => {
                       console.log(err)
                   }
                   else{
-                      console.log("mail send")
                   }
                 });
                 
@@ -191,7 +186,6 @@ exports.signup = async (req, res) => {
         //            return res.send(error);
         //     }
         //     else {
-        //         console.log("Server is ready to take our messages");
         //         return res.json({ statusCode: 200, statusMsj: "mail send", otp: otp })
         //     }
         // });
@@ -222,7 +216,6 @@ exports.emailVerify = async (req, res) => {
           console.log(err)
       }
       else{
-          console.log("mail send")
       }
     });
 
@@ -269,12 +262,9 @@ exports.verify_email_otp = async (req, res) => {
     
     var user_data = await User.findById({ _id: _id })
 
-    console.log("user", user_data)
     if (!user_data) {
         return res.json({ statusCode: 400, statusMsj: "Email Not found" })
     }
-    console.log("req.body", req.body)
-    console.log("otp", otp)
 
     if (user_data.otp == otp) {
         var verify = await User.updateOne({ _id: _id }, { $set: { verifiy: 1 , accessToken } })
@@ -322,7 +312,6 @@ exports.changePassword = async (req, res) => {
     var newPassword = req.body.newPassword;
 
     var data = await User.findOne({ _id: _id })
-    console.log("data", data)
 
     const validOldPassword = await validatePassword(oldPassword, data.password);
     if (!validOldPassword) return res.json({ statusCode: 402, statusMsj: 'incorrect old password' })
@@ -353,7 +342,6 @@ exports.userslist = async (req, res) => {
     
     
     // var keyword = req.query.search ? {"userName":{$concat:["$firstName",  "$lastName"]}, "userName":{ $regex: req.query.search.split(" ")[0]+ req.query.search.split(" ")[1], $options: "i" }, role:{$ne:3} }:{}
-    console.log("keyword",keyword)
     const users = await User.find(keyword).find({ _id: { $ne: req.user._id }, role:{$ne:3}});
     if(users.length == 0){
         return res.json({statusCode:400,statusMsj:"User not available"})
@@ -379,15 +367,12 @@ exports.forgotPassword = async (req, res) => {
     var email = req.body.email
     var otp =betweenRandomNumber(1000, 9999)
     var data = await User.findOne({ email: req.body.email })
-    console.log("add_otp", data)
     if(!data){
         return res.json({statusCode:400, statusMsj:"Email does Not Exist"})
     }
     var add_otp = await User.findOneAndUpdate({ email: req.body.email }, { $set: { otp: otp } })
-    console.log("add_otp",add_otp)
     
     sgMail.setApiKey('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');
-    console.log("emailemail",email)
     const msg = {
       to: email,
       from: 'divyachourasiya.infograins@gmail.com',
@@ -401,7 +386,6 @@ exports.forgotPassword = async (req, res) => {
           return res.send(error);
       }
       else{
-          console.log("mail send")
            return res.json({ statusCode:200,statusMsj:"mail send", otp:otp,UserId:add_otp._id})
       }
     });
@@ -439,7 +423,6 @@ exports.verify_otp = async (req, res) => {
     var _id = req.body._id;
 
     var user_data = await User.findOne({ _id: _id })
-    console.log("userdata",_id)
 
     if (!user_data) {
         return res.json({ statusCode: 400, statusMsj: "Email Not found" })
@@ -508,7 +491,6 @@ exports.userlogin = async (req, res, next) => {
         	return res.json({statusMsj:403,statusMsj:"please Enter your Role"})
         }
         const user = await User.findOne({ email });
-        console.log("user", user)
 
 
         if (!user) return res.json({ statusCode: 401, statusMsj: 'Email does not exist!' });
@@ -532,14 +514,12 @@ exports.userlogin = async (req, res, next) => {
         await User.findByIdAndUpdate(user._id, {
             accessToken
         })
-        console.log(accessToken)
         var userName = user.userName
         var channelName = "mychannel"
         var chaincodeName = "chat-app"
         var functionName = "InitLedger"
         var args=[]
         var result = await invoke.invokeChaincode(userName, channelName, chaincodeName, functionName, args)
-console.log("--------------",{ result})
         if(result.success == true){
             return res.json(
                 {statusCode: 200, 

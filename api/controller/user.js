@@ -64,15 +64,11 @@ exports.signup = async (req, res) => {
         }
 
         var hash_transaction = crypto.randomBytes(8).toString('hex');
-        console.log("hash_transaction  1 ", hash_transaction.length)
         const hashedPassword = await hashPassword(password);
 
         var otp = betweenRandomNumber(1000, 9999)
-        console.log("otp", otp)
-
         var UserData = await User.findOne({ email: req.body.email})
 
-        console.log("userdata", UserData)
         if (UserData != null) {
             if(UserData.verifiy == 0){
                 User.findOneAndUpdate({email: req.body.email},{$set:{otp:otp}},(err,updateOTP)=>{
@@ -89,13 +85,9 @@ exports.signup = async (req, res) => {
         }
         else{
             var userName = first_name+last_name
-console.log(userName)
             var result = await registerUser.registerUser(userName, orgName, password)
-
-           console.log("result", result.success)
            if(result.success == true){
    		 const newUser = new User({
-                
 			   first_name: first_name,
                     last_name: last_name,
                     userName:first_name+last_name,
@@ -109,61 +101,26 @@ console.log(userName)
                 });
 		
                 newUser.set({'otp':otp})
-		
               const savedata =  await  newUser.save()
-                 
-		console.log("----------------------", savedata)
-               sgMail.setApiKey('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');
-                console.log("emailemail",email)
-                const msg = {
-                  to: email,
-                  from: 'divyachourasiya.infograins@gmail.com',
-                  subject: "Your OTP",
-                  text: 'Your Otp is',
-                  html: '<strong>'+otp+'</strong>',
-                };
-                 sgMail.send(msg,(err,data)=>{
-                  if(err){
-                      console.log(err)
-                  }
-                  else{
-                      console.log("mail send")
-                  }
-                });
-                
-                // let transporter = nodemailer.createTransport(
-                // {
-                //     service: "gmail",
-                //     secure: false,
-                //     auth: {
-                //         user: "bulbul.infograins@gmail.com",
-                //         pass: "BulBul@123"
-                //     },
-                //     tls: { rejectUnauthorized: false }
-                // }
-                // );
-    
-                // let mailOptions = {
-                //     from: "bulbul.infograins@gmail.com",
-                //     to: email,
-                //     subject: "Your OTP",
-                //     html: "OTP - " + otp
+            //    sgMail.setApiKey('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');
+                // console.log("emailemail",email)
+                // const msg = {
+                //   to: email,
+                //   from: 'divyachourasiya.infograins@gmail.com',
+                //   subject: "Your OTP",
+                //   text: 'Your Otp is',
+                //   html: '<strong>'+otp+'</strong>',
                 // };
-
-                // transporter.sendMail(mailOptions, function (error) {
-                //     if (error) {
-                //         console.log(error);
-                //         // return res.send(error);
-                //     }
-                //     else {
-                //         console.log("Server is ready to take our messages");
-                //         // return res.json({ 
-                //         //     statusCode: 200, 
-                //         //     statusMsj: "Successfully registered and enrolled user " + userName + " and imported it into the wallet",
-                //         //     data: savedata })
-                //         // return res.json({ statusCode: 200, statusMsj: "mail send", otp: otp })
-                //     }
+                //  sgMail.send(msg,(err,data)=>{
+                //   if(err){
+                //       console.log({err})
+                //   }
+                //   else{
+                //       console.log("mail send")
+                //   }
                 // });
+                
+               
                 return res.json({ 
                     statusCode: 200, 
                     statusMsj: "Successfully registered and enrolled user " + userName + " and imported it into the wallet",
@@ -173,37 +130,7 @@ console.log(userName)
           }
         }
 
-        // console.log("api calling")
-        // let transporter = nodemailer.createTransport(
-        //     {
-        //         service: "gmail",
-        //         secure: false,
-        //         auth: {
-        //             user: "bharti.infograins@gmail.com",
-        //             pass: "Bharti@12345"
-        //         },
-        //         tls: { rejectUnauthorized: false }
-        //     }
-        // );
-
-        // let mailOptions = {
-        //     from: "bharti.infograins@gmail.com",
-        //     to: email,
-        //     subject: "Your OTP",
-        //     html: "OTP - " + otp
-        // };
-
-        // transporter.sendMail(mailOptions, function (error) {
-        //     if (error) {
-        //         
-        //         console.log(error);
-        //            return res.send(error);
-        //     }
-        //     else {
-        //         console.log("Server is ready to take our messages");
-        //         return res.json({ statusCode: 200, statusMsj: "mail send", otp: otp })
-        //     }
-        // });
+       
     } catch (error) {
         console.error(`Failed to enroll admin user "admin": ${error}`);
         return res.json({statusCode: 400, statusMsj: error.message})
@@ -218,7 +145,6 @@ exports.emailVerify = async (req, res) => {
     var add_otp = await User.updateOne({ email: req.body.email }, { $set: { otp: otp } })
     
     sgMail.setApiKey('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');
-    console.log("emailemail",email)
     const msg = {
       to: email,
       from: 'divyachourasiya.infograins@gmail.com',
@@ -229,9 +155,6 @@ exports.emailVerify = async (req, res) => {
      sgMail.send(msg,(err,data)=>{
       if(err){
           console.log(err)
-      }
-      else{
-          console.log("mail send")
       }
     });
 
@@ -269,7 +192,6 @@ exports.verify_email_otp = async (req, res) => {
    
     var otp = req.body.otp;
     var _id = req.body._id;
- 	console.log("-Id",_id)
     const accessToken = jwt.sign({
         userId: _id
     }, 'bulbul', {
@@ -278,12 +200,9 @@ exports.verify_email_otp = async (req, res) => {
     
     var user_data = await User.findById({ _id: _id })
 
-    console.log("user", user_data)
     if (!user_data) {
         return res.json({ statusCode: 400, statusMsj: "Email Not found" })
     }
-    console.log("req.body", req.body)
-    console.log("otp", otp)
 
     if (user_data.otp == otp) {
         var verify = await User.updateOne({ _id: _id }, { $set: { verifiy: 1 , accessToken } })
@@ -326,12 +245,10 @@ exports.updatePassword = async (req, res) => {
 exports.changePassword = async (req, res) => {
   
     var _id=req.user._id;
-    // console.log("userId",userId)
     var oldPassword = req.body.oldPassword;
     var newPassword = req.body.newPassword;
 
     var data = await User.findOne({ _id: _id })
-    console.log("data", data)
 
     const validOldPassword = await validatePassword(oldPassword, data.password);
     if (!validOldPassword) return res.json({ statusCode: 402, statusMsj: 'incorrect old password' })
@@ -354,7 +271,6 @@ exports.userslist = async (req, res) => {
 //   {$project: { "userName" : { $concat : [ "$firstName", " ", "$lastName" ] } }},
 //   {$match: {"userName": {$regex: /bob j/i}}}
 // ]).exec(function(err, result){
-//   console.log("resultresultresult", result);
 // });
 
 
@@ -362,7 +278,6 @@ exports.userslist = async (req, res) => {
     
     
     // var keyword = req.query.search ? {"userName":{$concat:["$firstName",  "$lastName"]}, "userName":{ $regex: req.query.search.split(" ")[0]+ req.query.search.split(" ")[1], $options: "i" }, role:{$ne:3} }:{}
-    console.log("keyword",keyword)
     const users = await User.find(keyword).find({ _id: { $ne: req.user._id }, role:{$ne:3}});
     if(users.length == 0){
         return res.json({statusCode:400,statusMsj:"User not available"})
@@ -388,15 +303,12 @@ exports.forgotPassword = async (req, res) => {
     var email = req.body.email
     var otp =betweenRandomNumber(1000, 9999)
     var data = await User.findOne({ email: req.body.email })
-    console.log("add_otp", data)
     if(!data){
         return res.json({statusCode:400, statusMsj:"Email does Not Exist"})
     }
     var add_otp = await User.findOneAndUpdate({ email: req.body.email }, { $set: { otp: otp } })
-    console.log("add_otp",add_otp)
     
     sgMail.setApiKey('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');
-    console.log("emailemail",email)
     const msg = {
       to: email,
       from: 'divyachourasiya.infograins@gmail.com',
@@ -410,7 +322,6 @@ exports.forgotPassword = async (req, res) => {
           return res.send(error);
       }
       else{
-          console.log("mail send")
            return res.json({ statusCode:200,statusMsj:"mail send", otp:otp,UserId:add_otp._id})
       }
     });
@@ -432,12 +343,10 @@ exports.forgotPassword = async (req, res) => {
     // }
     // smtpTransport.sendMail(mailOptionsNoAttachment, function(error, response){
     //     if(error){
-    //         console.log(error);
     //         return res.send(error);
             
     //     }
     //     else{
-    //         console.log("Server is ready to take our statusMsjs");
     //         return res.json({ statusCode:200,statusMsj:"mail send", otp:otp,UserId:add_otp._id})
     //     }
     // });
@@ -448,7 +357,6 @@ exports.verify_otp = async (req, res) => {
     var _id = req.body._id;
 
     var user_data = await User.findOne({ _id: _id })
-    console.log("userdata",_id)
 
     if (!user_data) {
         return res.json({ statusCode: 400, statusMsj: "Email Not found" })
@@ -517,7 +425,6 @@ exports.userlogin = async (req, res, next) => {
         	return res.json({statusMsj:403,statusMsj:"please Enter your Role"})
         }
         const user = await User.findOne({ email });
-        console.log("user", user)
 
 
         if (!user) return res.json({ statusCode: 401, statusMsj: 'Email does not exist!' });
@@ -541,14 +448,12 @@ exports.userlogin = async (req, res, next) => {
         await User.findByIdAndUpdate(user._id, {
             accessToken
         })
-        console.log(accessToken)
         var userName = user.userName
         var channelName = "mychannel"
         var chaincodeName = "chat-app"
         var functionName = "InitLedger"
         var args=[]
         var result = await invoke.invokeChaincode(userName, channelName, chaincodeName, functionName, args)
-console.log("--------------",{ result})
         if(result.success == true){
             return res.json(
                 {statusCode: 200, 
@@ -569,7 +474,6 @@ console.log("--------------",{ result})
             })
         }
     } catch (error) {
-        // console.log(error);
         // return res.json({ statusCode: 500, statusMsj: "login failed" })
         console.error(`Failed to submit transaction: ${error}`);
         return res.json({statusCode: 500, statusMsj: error.message})
@@ -586,17 +490,13 @@ const storage = multer.diskStorage({
             var extensionsGet = file.originalname;
             extensionsGet = extensionsGet.split('.');
             extensionsGet = extensionsGet[1];
-            console.log("extensionsGet",extensionsGet);
 
             if(extensionsGet === "png" ||extensionsGet === "jpg" ||extensionsGet === "jpeg"){
-                console.log("extensionsGet","1");
                 if(file){
-                    console.log("extensionsGet","2",file);
                     cb(null, file.originalname.replace(/ /g, ""))
                 }
             }
             else{
-                console.log("extensionsGet","3");
                 cb({
                     statusCode:403,
                     statusMsj:file.originalname+" Image Not saported. Upload valid image"
@@ -608,8 +508,7 @@ const upload = multer({storage: storage}).single('image');
 
 exports.uploadImage = async(req, res)=>{
     upload (req, res, err =>{
-        console.log("req",req.file)
-        console.log("image",req.file.filename)
+        
         if(req.file == undefined || req.file == null){
             return res.json({statusCode:403, statusMsj: "pleas select image"})
         }
@@ -617,11 +516,8 @@ exports.uploadImage = async(req, res)=>{
             return res.json({statusCode:200, statusMsj: err});
         }
         else{
-            console.log("process.env.BASE_URL",process.env.BASE_URL)
             var BASE_URL = "http://148.72.244.170:3000/images/"
-            console.log("req.file.filename",req.file.filename)
             User.updateOne({_id:req.user._id}, {$set:{pic:BASE_URL+req.file.filename}}).then(data=>{
-                console.log("pic update", data)
             }).catch(err=>{
                 return res.json({statusCode:400, statusMsj: err})
             })

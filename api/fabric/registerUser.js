@@ -25,13 +25,10 @@ async function registerUser(userName, orgName, password) {
         // Create a new file system based wallet for managing identities.
         const walletPath = path.join(process.cwd(), 'wallet');
         const wallet = await Wallets.newFileSystemWallet(walletPath);
-        // console.log(`Wallet path: ${walletPath}`);
 
         // Check to see if we've already enrolled the user.
         const userIdentity = await wallet.get(userName);
-        console.log({userIdentity})
         if (userIdentity) {
-            console.log("An identity for the user " + userName + " already exists in the wallet");
             // return {status: 403, message: "An identity for the user " + userName + " already exists in the wallet"};
             return {success: false, message: "An identity for the user " + userName + " already exists in the wallet"};
         }
@@ -39,7 +36,6 @@ async function registerUser(userName, orgName, password) {
         // Check to see if we've already enrolled the admin user.
         const adminIdentity = await wallet.get('admin');
         if (!adminIdentity) {
-            console.log('An identity for the admin user "admin" does not exist in the wallet');
             // return {status: 400, message: "An identity for the admin user admin does not exist in the wallet. Please enroll admin via /enrollAdmin"};;
             return {success: false, message: "An identity for the admin user admin does not exist in the wallet. Please enroll admin via /enrollAdmin"};;
         }
@@ -68,11 +64,7 @@ async function registerUser(userName, orgName, password) {
             password: password,
             type: 'X.509',
         };
-        // console.log("x509Identity",x509Identity)
         await wallet.put(userName, x509Identity);
-        // console.log("Successfully registered and enrolled user " + userName + " and imported it into the wallet");
-        // console.error(`Successfully to register "${userName}"`);        
-	console.log("in the end")
         return {success: true, message: "Successfully registered and enrolled user " + userName + " and imported it into the wallet"}
         // return {status: 200, message: "Successfully registered and enrolled user " + userName + " and imported it into the wallet"}
 

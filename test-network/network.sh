@@ -12,18 +12,33 @@
 #
 # prepending $PWD/../bin to PATH to ensure we are picking up the correct binaries
 # this may be commented out to resolve installed version of tools if desired
-export PATH=${PWD}/../bin:$PATH
+#
+# However using PWD in the path has the side effect that location that
+# this script is run from is critical. To ease this, get the directory
+# this script is actually in and infer location from there. (putting first)
+
+ROOTDIR=$(cd "$(dirname "$0")" && pwd)
+export PATH=${ROOTDIR}/../bin:${PWD}/../bin:$PATH
 export FABRIC_CFG_PATH=${PWD}/configtx
 export VERBOSE=false
 
+# push to the required directory & set a trap to go back if needed
+pushd ${ROOTDIR} > /dev/null
+trap "popd > /dev/null" EXIT
+
 . scripts/utils.sh
+
+: ${CONTAINER_CLI:="docker"}
+: ${CONTAINER_CLI_COMPOSE:="${CONTAINER_CLI}-compose"}
+infoln "Using ${CONTAINER_CLI} and ${CONTAINER_CLI_COMPOSE}"
 
 # Obtain CONTAINER_IDS and remove them
 # This function is called when you bring a network down
 function clearContainers() {
   infoln "Removing remaining containers"
-  docker rm -f $(docker ps -aq --filter label=service=hyperledger-fabric) 2>/dev/null || true
-  docker rm -f $(docker ps -aq --filter name='dev-peer*') 2>/dev/null || true
+  ${CONTAINER_CLI} rm -f $(${CONTAINER_CLI} ps -aq --filter label=service=hyperledger-fabric) 2>/dev/null || true
+  ${CONTAINER_CLI} rm -f $(${CONTAINER_CLI} ps -aq --filter name='dev-peer*') 2>/dev/null || true
+  ${CONTAINER_CLI} kill "$(${CONTAINER_CLI} ps -q --filter name=ccaas)" 2>/dev/null || true
 }
 
 # Delete any images that were generated as a part of this setup
@@ -31,7 +46,7 @@ function clearContainers() {
 # This function is called when you bring the network down
 function removeUnwantedImages() {
   infoln "Removing generated chaincode docker images"
-  docker image rm -f $(docker images -aq --filter reference='dev-peer*') 2>/dev/null || true
+  ${CONTAINER_CLI} image rm -f $(${CONTAINER_CLI} images -aq --filter reference='dev-peer*') 2>/dev/null || true
 }
 
 # Versions of fabric known not to work with the test network
@@ -54,7 +69,7 @@ function checkPrereqs() {
   # use the fabric tools container to see if the samples and binaries match your
   # docker images
   LOCAL_VERSION=$(peer version | sed -ne 's/^ Version: //p')
-  DOCKER_IMAGE_VERSION=$(docker run --rm hyperledger/fabric-tools:latest peer version | sed -ne 's/^ Version: //p')
+  DOCKER_IMAGE_VERSION=$(${CONTAINER_CLI} run --rm hyperledger/fabric-tools:latest peer version | sed -ne 's/^ Version: //p')
 
   infoln "LOCAL_VERSION=$LOCAL_VERSION"
   infoln "DOCKER_IMAGE_VERSION=$DOCKER_IMAGE_VERSION"
@@ -87,7 +102,7 @@ function checkPrereqs() {
       exit 1
     fi
     CA_LOCAL_VERSION=$(fabric-ca-client version | sed -ne 's/ Version: //p')
-    CA_DOCKER_IMAGE_VERSION=$(docker run --rm hyperledger/fabric-ca:latest fabric-ca-client version | sed -ne 's/ Version: //p' | head -1)
+    CA_DOCKER_IMAGE_VERSION=$(${CONTAINER_CLI} run --rm hyperledger/fabric-ca:latest fabric-ca-client version | sed -ne 's/ Version: //p' | head -1)
     infoln "CA_LOCAL_VERSION=$CA_LOCAL_VERSION"
     infoln "CA_DOCKER_IMAGE_VERSION=$CA_DOCKER_IMAGE_VERSION"
 
@@ -170,7 +185,7 @@ function createOrgs() {
   # Create crypto material using Fabric CA
   if [ "$CRYPTO" == "Certificate Authorities" ]; then
     infoln "Generating certificates using Fabric CA"
-    docker-compose -f $COMPOSE_FILE_CA up -d 2>&1
+    ${CONTAINER_CLI_COMPOSE} -f compose/$COMPOSE_FILE_CA -f compose/$CONTAINER_CLI/${CONTAINER_CLI}-$COMPOSE_FILE_CA up -d 2>&1
 
     . organizations/fabric-ca/registerEnroll.sh
 
@@ -229,21 +244,23 @@ function createOrgs() {
 
 # Bring up the peer and orderer nodes using docker compose.
 function networkUp() {
+
   checkPrereqs
+
   # generate artifacts if they don't exist
   if [ ! -d "organizations/peerOrganizations" ]; then
     createOrgs
   fi
 
-  COMPOSE_FILES="-f ${COMPOSE_FILE_BASE}"
+  COMPOSE_FILES="-f compose/${COMPOSE_FILE_BASE} -f compose/${CONTAINER_CLI}/${CONTAINER_CLI}-${COMPOSE_FILE_BASE}"
 
   if [ "${DATABASE}" == "couchdb" ]; then
-    COMPOSE_FILES="${COMPOSE_FILES} -f ${COMPOSE_FILE_COUCH}"
+    COMPOSE_FILES="${COMPOSE_FILES} -f compose/${COMPOSE_FILE_COUCH} -f compose/${CONTAINER_CLI}/${CONTAINER_CLI}-${COMPOSE_FILE_COUCH}"
   fi
 
-  DOCKER_SOCK="${DOCKER_SOCK}" docker-compose ${COMPOSE_FILES} up -d 2>&1
+  DOCKER_SOCK="${DOCKER_SOCK}" ${CONTAINER_CLI_COMPOSE} ${COMPOSE_FILES} up -d 2>&1
 
-  docker ps -a
+  $CONTAINER_CLI ps -a
   if [ $? -ne 0 ]; then
     fatalln "Unable to start network"
   fi
@@ -253,15 +270,33 @@ function networkUp() {
 # and then update the anchor peers for each organization
 function createChannel() {
   # Bring up the network if it is not already up.
+  bringUpNetwork="false"
 
-  if [ ! -d "organizations/peerOrganizations" ]; then
+  local bft_true=$1
+
+  if ! $CONTAINER_CLI info > /dev/null 2>&1 ; then
+    fatalln "$CONTAINER_CLI network is required to be running to create a channel"
+  fi
+
+  # check if all containers are present
+  CONTAINERS=($($CONTAINER_CLI ps | grep hyperledger/ | awk '{print $2}'))
+  len=$(echo ${#CONTAINERS[@]})
+
+  if [[ $len -ge 4 ]] && [[ ! -d "organizations/peerOrganizations" ]]; then
+    echo "Bringing network down to sync certs with containers"
+    networkDown
+  fi
+
+  [[ $len -lt 4 ]] || [[ ! -d "organizations/peerOrganizations" ]] && bringUpNetwork="true" || echo "Network Running Already"
+
+  if [ $bringUpNetwork == "true"  ]; then
     infoln "Bringing up network"
     networkUp
   fi
 
   # now run the script that creates a channel. This script uses configtxgen once
   # to create the channel creation transaction and the anchor peer updates.
-  scripts/createChannel.sh $CHANNEL_NAME $CLI_DELAY $MAX_RETRY $VERBOSE
+  scripts/createChannel.sh $CHANNEL_NAME $CLI_DELAY $MAX_RETRY $VERBOSE $bft_true
 }
 
 
@@ -285,28 +320,46 @@ function deployCCAAS() {
 
 # Tear down running network
 function networkDown() {
+  local temp_compose=$COMPOSE_FILE_BASE
+  COMPOSE_FILE_BASE=compose-bft-test-net.yaml
+  COMPOSE_BASE_FILES="-f compose/${COMPOSE_FILE_BASE} -f compose/${CONTAINER_CLI}/${CONTAINER_CLI}-${COMPOSE_FILE_BASE}"
+  COMPOSE_COUCH_FILES="-f compose/${COMPOSE_FILE_COUCH} -f compose/${CONTAINER_CLI}/${CONTAINER_CLI}-${COMPOSE_FILE_COUCH}"
+  COMPOSE_CA_FILES="-f compose/${COMPOSE_FILE_CA} -f compose/${CONTAINER_CLI}/${CONTAINER_CLI}-${COMPOSE_FILE_CA}"
+  COMPOSE_FILES="${COMPOSE_BASE_FILES} ${COMPOSE_COUCH_FILES} ${COMPOSE_CA_FILES}"
+
   # stop org3 containers also in addition to org1 and org2, in case we were running sample to add org3
-  DOCKER_SOCK=$DOCKER_SOCK docker-compose -f $COMPOSE_FILE_BASE -f $COMPOSE_FILE_COUCH -f $COMPOSE_FILE_CA down --volumes --remove-orphans
-  docker-compose -f $COMPOSE_FILE_COUCH_ORG3 -f $COMPOSE_FILE_ORG3 down --volumes --remove-orphans
+  COMPOSE_ORG3_BASE_FILES="-f addOrg3/compose/${COMPOSE_FILE_ORG3_BASE} -f addOrg3/compose/${CONTAINER_CLI}/${CONTAINER_CLI}-${COMPOSE_FILE_ORG3_BASE}"
+  COMPOSE_ORG3_COUCH_FILES="-f addOrg3/compose/${COMPOSE_FILE_ORG3_COUCH} -f addOrg3/compose/${CONTAINER_CLI}/${CONTAINER_CLI}-${COMPOSE_FILE_ORG3_COUCH}"
+  COMPOSE_ORG3_CA_FILES="-f addOrg3/compose/${COMPOSE_FILE_ORG3_CA} -f addOrg3/compose/${CONTAINER_CLI}/${CONTAINER_CLI}-${COMPOSE_FILE_ORG3_CA}"
+  COMPOSE_ORG3_FILES="${COMPOSE_ORG3_BASE_FILES} ${COMPOSE_ORG3_COUCH_FILES} ${COMPOSE_ORG3_CA_FILES}"
+
+  if [ "${CONTAINER_CLI}" == "docker" ]; then
+    DOCKER_SOCK=$DOCKER_SOCK ${CONTAINER_CLI_COMPOSE} ${COMPOSE_FILES} ${COMPOSE_ORG3_FILES} down --volumes --remove-orphans
+  elif [ "${CONTAINER_CLI}" == "podman" ]; then
+    ${CONTAINER_CLI_COMPOSE} ${COMPOSE_FILES} ${COMPOSE_ORG3_FILES} down --volumes
+  else
+    fatalln "Container CLI  ${CONTAINER_CLI} not supported"
+  fi
+
+  COMPOSE_FILE_BASE=$temp_compose
+
   # Don't remove the generated artifacts -- note, the ledgers are always removed
   if [ "$MODE" != "restart" ]; then
     # Bring down the network, deleting the volumes
-    docker volume rm docker_orderer.example.com docker_peer0.org1.example.com docker_peer0.org2.example.com
+    ${CONTAINER_CLI} volume rm docker_orderer.example.com docker_peer0.org1.example.com docker_peer0.org2.example.com
     #Cleanup the chaincode containers
     clearContainers
     #Cleanup images
     removeUnwantedImages
-    #
-    docker kill $(docker ps -q --filter name=ccaas) || true
     # remove orderer block and other channel configuration transactions and certs
-    docker run --rm -v "$(pwd):/data" busybox sh -c 'cd /data && rm -rf system-genesis-block/*.block organizations/peerOrganizations organizations/ordererOrganizations'
+    ${CONTAINER_CLI} run --rm -v "$(pwd):/data" busybox sh -c 'cd /data && rm -rf system-genesis-block/*.block organizations/peerOrganizations organizations/ordererOrganizations'
     ## remove fabric ca artifacts
-    docker run --rm -v "$(pwd):/data" busybox sh -c 'cd /data && rm -rf organizations/fabric-ca/org1/msp organizations/fabric-ca/org1/tls-cert.pem organizations/fabric-ca/org1/ca-cert.pem organizations/fabric-ca/org1/IssuerPublicKey organizations/fabric-ca/org1/IssuerRevocationPublicKey organizations/fabric-ca/org1/fabric-ca-server.db'
-    docker run --rm -v "$(pwd):/data" busybox sh -c 'cd /data && rm -rf organizations/fabric-ca/org2/msp organizations/fabric-ca/org2/tls-cert.pem organizations/fabric-ca/org2/ca-cert.pem organizations/fabric-ca/org2/IssuerPublicKey organizations/fabric-ca/org2/IssuerRevocationPublicKey organizations/fabric-ca/org2/fabric-ca-server.db'
-    docker run --rm -v "$(pwd):/data" busybox sh -c 'cd /data && rm -rf organizations/fabric-ca/ordererOrg/msp organizations/fabric-ca/ordererOrg/tls-cert.pem organizations/fabric-ca/ordererOrg/ca-cert.pem organizations/fabric-ca/ordererOrg/IssuerPublicKey organizations/fabric-ca/ordererOrg/IssuerRevocationPublicKey organizations/fabric-ca/ordererOrg/fabric-ca-server.db'
-    docker run --rm -v "$(pwd):/data" busybox sh -c 'cd /data && rm -rf addOrg3/fabric-ca/org3/msp addOrg3/fabric-ca/org3/tls-cert.pem addOrg3/fabric-ca/org3/ca-cert.pem addOrg3/fabric-ca/org3/IssuerPublicKey addOrg3/fabric-ca/org3/IssuerRevocationPublicKey addOrg3/fabric-ca/org3/fabric-ca-server.db'
+    ${CONTAINER_CLI} run --rm -v "$(pwd):/data" busybox sh -c 'cd /data && rm -rf organizations/fabric-ca/org1/msp organizations/fabric-ca/org1/tls-cert.pem organizations/fabric-ca/org1/ca-cert.pem organizations/fabric-ca/org1/IssuerPublicKey organizations/fabric-ca/org1/IssuerRevocationPublicKey organizations/fabric-ca/org1/fabric-ca-server.db'
+    ${CONTAINER_CLI} run --rm -v "$(pwd):/data" busybox sh -c 'cd /data && rm -rf organizations/fabric-ca/org2/msp organizations/fabric-ca/org2/tls-cert.pem organizations/fabric-ca/org2/ca-cert.pem organizations/fabric-ca/org2/IssuerPublicKey organizations/fabric-ca/org2/IssuerRevocationPublicKey organizations/fabric-ca/org2/fabric-ca-server.db'
+    ${CONTAINER_CLI} run --rm -v "$(pwd):/data" busybox sh -c 'cd /data && rm -rf organizations/fabric-ca/ordererOrg/msp organizations/fabric-ca/ordererOrg/tls-cert.pem organizations/fabric-ca/ordererOrg/ca-cert.pem organizations/fabric-ca/ordererOrg/IssuerPublicKey organizations/fabric-ca/ordererOrg/IssuerRevocationPublicKey organizations/fabric-ca/ordererOrg/fabric-ca-server.db'
+    ${CONTAINER_CLI} run --rm -v "$(pwd):/data" busybox sh -c 'cd /data && rm -rf addOrg3/fabric-ca/org3/msp addOrg3/fabric-ca/org3/tls-cert.pem addOrg3/fabric-ca/org3/ca-cert.pem addOrg3/fabric-ca/org3/IssuerPublicKey addOrg3/fabric-ca/org3/IssuerRevocationPublicKey addOrg3/fabric-ca/org3/fabric-ca-server.db'
     # remove channel and script artifacts
-    docker run --rm -v "$(pwd):/data" busybox sh -c 'cd /data && rm -rf channel-artifacts log.txt *.tar.gz'
+    ${CONTAINER_CLI} run --rm -v "$(pwd):/data" busybox sh -c 'cd /data && rm -rf channel-artifacts log.txt *.tar.gz'
   fi
 }
 
@@ -330,15 +383,17 @@ CC_COLL_CONFIG="NA"
 # chaincode init function defaults to "NA"
 CC_INIT_FCN="NA"
 # use this as the default docker-compose yaml definition
-COMPOSE_FILE_BASE=docker/docker-compose-test-net.yaml
+COMPOSE_FILE_BASE=compose-test-net.yaml
 # docker-compose.yaml file if you are using couchdb
-COMPOSE_FILE_COUCH=docker/docker-compose-couch.yaml
+COMPOSE_FILE_COUCH=compose-couch.yaml
 # certificate authorities compose file
-COMPOSE_FILE_CA=docker/docker-compose-ca.yaml
-# use this as the docker compose couch file for org3
-COMPOSE_FILE_COUCH_ORG3=addOrg3/docker/docker-compose-couch-org3.yaml
+COMPOSE_FILE_CA=compose-ca.yaml
 # use this as the default docker-compose yaml definition for org3
-COMPOSE_FILE_ORG3=addOrg3/docker/docker-compose-org3.yaml
+COMPOSE_FILE_ORG3_BASE=compose-org3.yaml
+# use this as the docker compose couch file for org3
+COMPOSE_FILE_ORG3_COUCH=compose-couch-org3.yaml
+# certificate authorities compose file
+COMPOSE_FILE_ORG3_CA=compose-ca-org3.yaml
 #
 # chaincode language defaults to "NA"
 CC_SRC_LANGUAGE="NA"
@@ -354,6 +409,9 @@ DATABASE="leveldb"
 # Get docker sock path from environment variable
 SOCK="${DOCKER_HOST:-/var/run/docker.sock}"
 DOCKER_SOCK="${SOCK##unix://}"
+
+# BFT activated flag
+BFT=0
 
 # Parse commandline args
 
@@ -387,6 +445,9 @@ while [[ $# -ge 1 ]] ; do
   -c )
     CHANNEL_NAME="$2"
     shift
+    ;;
+  -bft )
+    BFT=1
     ;;
   -ca )
     CRYPTO="Certificate Authorities"
@@ -441,7 +502,6 @@ while [[ $# -ge 1 ]] ; do
     ;;
   -verbose )
     VERBOSE=true
-    shift
     ;;
   * )
     errorln "Unknown flag: $key"
@@ -451,6 +511,16 @@ while [[ $# -ge 1 ]] ; do
   esac
   shift
 done
+
+## Check if user attempts to use BFT orderer and CA together
+if [[ $BFT -eq 1 && "$CRYPTO" == "Certificate Authorities" ]]; then
+  fatalln "This sample does not yet support the use of consensus type BFT and CA together."
+fi
+
+if [ $BFT -eq 1 ]; then
+  export FABRIC_CFG_PATH=${PWD}/bft-config
+  COMPOSE_FILE_BASE=compose-bft-test-net.yaml
+fi
 
 # Are we generating crypto material with this command?
 if [ ! -d "organizations/peerOrganizations" ]; then
@@ -466,7 +536,7 @@ if [ "$MODE" == "up" ]; then
 elif [ "$MODE" == "createChannel" ]; then
   infoln "Creating channel '${CHANNEL_NAME}'."
   infoln "If network is not up, starting nodes with CLI timeout of '${MAX_RETRY}' tries and CLI delay of '${CLI_DELAY}' seconds and using database '${DATABASE} ${CRYPTO_MODE}"
-  createChannel
+  createChannel $BFT
 elif [ "$MODE" == "down" ]; then
   infoln "Stopping network"
   networkDown
@@ -484,4 +554,3 @@ else
   printHelp
   exit 1
 fi
-

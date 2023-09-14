@@ -36,7 +36,6 @@ mongoose
    
   
 app.post('/enrollAdmin', async (req, res) => {
-  console.log("\n - Enrolling admin")
   var result = await admin.enrollAdmin()
   return res.send(result)
 })
@@ -51,19 +50,4 @@ app.listen(port, () => {
   console.log(`**********************************************\nChating app listening at http://localhost:${port}\n\n**********************************************\n`)
 })
 
-const https = require('https');
-const fs = require('fs');
 
-// const options = {
-//   key: fs.readFileSync('/etc/ftpd-rsa-key.pem','utf8'),
-//   cert: fs.readFileSync('/etc/exim.crt','utf8')
-// };
-
-// var httpsServer = https.createServer(options, app);
-// httpsServer.listen(port, (error) => {
-//     if (error) {
-//         console.log("error", error)
-//     } else {
-//         console.log(`**********************************************\nChating app listening at http://localhost:${port}\n\n**********************************************\n`)
-//     }
-// })

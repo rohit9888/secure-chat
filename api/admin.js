@@ -25,12 +25,10 @@ async function enrollAdmin() {
         // Create a new file system based wallet for managing identities.
         const walletPath = path.join(process.cwd(), 'wallet');
         const wallet = await Wallets.newFileSystemWallet(walletPath);
-        console.log(`Wallet path: ${walletPath}`);
 
         // Check to see if we've already enrolled the admin user.
         const identity = await wallet.get('admin');
         if (identity) {
-            console.log('An identity for the admin user "admin" already exists in the wallet.');
             return {success: false, message: "An identity for the admin user admin already exists in the wallet"}
         }
 
@@ -45,7 +43,6 @@ async function enrollAdmin() {
             type: 'X.509',
         };
         await wallet.put('admin', x509Identity);
-        console.log('Successfully enrolled admin user "admin" and imported it into the wallet');
         return {success: true, message: "Successfully enrolled admin user admin and imported it into the wallet"}
 
     } catch (error) {

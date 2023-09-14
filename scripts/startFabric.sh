@@ -31,3 +31,5 @@ popd
 pushd ../test-network
 ./organizations/ccp-generate.sh
 popd
+# // "path": "/tmp/crypto/peerOrganizations/org1.example.com/users/User1@org1.example.com/msp/keystore/acf7acfb90db8683c367c9e5ea270d63afcb5c6d17f07095aa56dec010febe76_sk"
+			// },
