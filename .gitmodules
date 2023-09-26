@@ -1,0 +1,3 @@
+[submodule "credi-front-end"]
+	path = credi-front-end
+	url = https://github.com/rohit9888/credi-front-end
