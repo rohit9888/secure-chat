@@ -87,6 +87,4 @@ wallet
 admin/api/node_modules
 api/node_modules
 chaincode/chat-chaincode/go/vendor
-fabric-explorer/organizations/ordererOrganizations
-fabric-explorer/organizations/peerOrganizations
 GitHubDesktop-linux-2.6.3-linux1.deb
